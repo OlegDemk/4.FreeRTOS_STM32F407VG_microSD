@@ -10,6 +10,8 @@ Also project can reading data from sensors (see on picture) Start_bme280 and Sta
 
 ![alt text](https://github.com/OlegDemk/4.FreeRTOS_STM32F407VG_microSD/blob/main/schem.png)
 
+![alt text](https://github.com/OlegDemk/4.FreeRTOS_STM32F407VG_microSD/blob/main/SD.jpg)
+
 Write test data (in variable) looks like:
 ![alt text](https://github.com/OlegDemk/4.FreeRTOS_STM32F407VG_microSD/blob/main/log_data_screen.png)
 
