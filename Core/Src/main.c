@@ -32,9 +32,11 @@
 #include <stdio.h>
 #include <stdbool.h>
 
+// Sensors
 #include "BME280/bme280_defs.h"
 #include "BME280/bme280.h"
 
+// SD
 #include "File_Handling_RTOS.h"
 /* USER CODE END Includes */
 
@@ -51,10 +53,12 @@ volatile unsigned long ulHighFreqebcyTimerTicks;		// This variable using for cal
 char str_management_memory_str[1000] = {0};
 int freemem = 0;
 
-
-
-
 uint32_t tim_val = 0;
+
+// For SD works (use in fatfs_sd.c file)
+volatile uint8_t FatFsCnt = 0;
+volatile uint8_t Timer1, Timer2;
+
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -71,6 +75,7 @@ I2C_HandleTypeDef hi2c3;
 
 SPI_HandleTypeDef hspi1;
 
+TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim10;
@@ -146,6 +151,18 @@ const osThreadAttr_t AM2302_attributes = {
   .stack_mem = &AM2302Buffer[0],
   .stack_size = sizeof(AM2302Buffer),
   .priority = (osPriority_t) osPriorityLow,
+};
+/* Definitions for SD_CARD */
+osThreadId_t SD_CARDHandle;
+uint32_t SD_CARDBuffer[ 1024 ];
+osStaticThreadDef_t SD_CARDControlBlock;
+const osThreadAttr_t SD_CARD_attributes = {
+  .name = "SD_CARD",
+  .cb_mem = &SD_CARDControlBlock,
+  .cb_size = sizeof(SD_CARDControlBlock),
+  .stack_mem = &SD_CARDBuffer[0],
+  .stack_size = sizeof(SD_CARDBuffer),
+  .priority = (osPriority_t) osPriorityHigh,
 };
 /* Definitions for UARTQueue */
 osMessageQueueId_t UARTQueueHandle;
@@ -244,12 +261,14 @@ static void MX_I2C3_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_TIM10_Init(void);
 static void MX_SPI1_Init(void);
+static void MX_TIM1_Init(void);
 void StartDefaultTask(void *argument);
 void Start_Blue_LED_Blink(void *argument);
 void Start_Show_Resources(void *argument);
 void Start_UART_Task(void *argument);
 void Start_bme280(void *argument);
 void Start_AM2302(void *argument);
+void Start_SD_CARD(void *argument);
 
 /* USER CODE BEGIN PFP */
 
@@ -294,11 +313,24 @@ int main(void)
   MX_TIM10_Init();
   MX_SPI1_Init();
   MX_FATFS_Init();
+  MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_Base_Start_IT(&htim3);		//  This TIM3 using for calculate how many time all tasks was running.
 
   //HAL_TIM_Base_Start_IT(&htim2);
-  HAL_TIM_Base_Start_IT(&htim10);
+  //HAL_TIM_Base_Start_IT(&htim10);			// Using for generate us delays
+  HAL_TIM_Base_Start_IT(&htim1);			// Blink Green LED
+
+
+//  HAL_Delay(100);
+//
+//  Mount_SD("/");
+//  //Format_SD();
+//
+//  Read_File("test1.txt");
+//  // Create_File("Test_data.txt");
+//  // Create_File("Test_data_2.txt");
+//  Unmount_SD("/");
 
   /* USER CODE END 2 */
 
@@ -343,6 +375,9 @@ int main(void)
 
   /* creation of AM2302 */
   AM2302Handle = osThreadNew(Start_AM2302, NULL, &AM2302_attributes);
+
+  /* creation of SD_CARD */
+  SD_CARDHandle = osThreadNew(Start_SD_CARD, NULL, &SD_CARD_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -467,7 +502,7 @@ static void MX_SPI1_Init(void)
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_64;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_32;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -479,6 +514,52 @@ static void MX_SPI1_Init(void)
   /* USER CODE BEGIN SPI1_Init 2 */
 
   /* USER CODE END SPI1_Init 2 */
+
+}
+
+/**
+  * @brief TIM1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM1_Init(void)
+{
+
+  /* USER CODE BEGIN TIM1_Init 0 */
+
+  /* USER CODE END TIM1_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM1_Init 1 */
+
+  /* USER CODE END TIM1_Init 1 */
+  htim1.Instance = TIM1;
+  htim1.Init.Prescaler = 16800-1;
+  htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim1.Init.Period = 10000;
+  htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim1.Init.RepetitionCounter = 0;
+  htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim1, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_UPDATE;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim1, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM1_Init 2 */
+
+  /* USER CODE END TIM1_Init 2 */
 
 }
 
@@ -640,8 +721,8 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(CS_I2C_SPI_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : OTG_FS_PowerSwitchOn_Pin AM2302_Pin CS_microSD_Pin */
-  GPIO_InitStruct.Pin = OTG_FS_PowerSwitchOn_Pin|AM2302_Pin|CS_microSD_Pin;
+  /*Configure GPIO pins : OTG_FS_PowerSwitchOn_Pin AM2302_Pin */
+  GPIO_InitStruct.Pin = OTG_FS_PowerSwitchOn_Pin|AM2302_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -691,6 +772,13 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : CS_microSD_Pin */
+  GPIO_InitStruct.Pin = CS_microSD_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  HAL_GPIO_Init(CS_microSD_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : I2S3_MCK_Pin I2S3_SCK_Pin I2S3_SD_Pin */
   GPIO_InitStruct.Pin = I2S3_MCK_Pin|I2S3_SCK_Pin|I2S3_SD_Pin;
@@ -1131,9 +1219,56 @@ void Start_AM2302(void *argument)
   /* USER CODE END Start_AM2302 */
 }
 
+/* USER CODE BEGIN Header_Start_SD_CARD */
+/**
+* @brief Function implementing the SD_CARD thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_Start_SD_CARD */
+void Start_SD_CARD(void *argument)
+{
+  /* USER CODE BEGIN Start_SD_CARD */
+  /* Infinite loop */
+
+	Mount_SD("/");
+
+	Create_File("test_data_1.txt");
+	Update_File("test_data_1.txt","\n\rStart recording\r\n");	// Add data to the end of file
+
+	// Create folders
+	Create_Dir("test_folder_1");
+	Create_Dir("test_folder_2");
+	Create_Dir("test_folder_3");
+
+	Unmount_SD("/");
+
+	static int i = 0;											// Test data for write
+
+  for(;;)
+  {
+	  // Log data ewery one second
+	  osDelay(1000);
+	  HAL_GPIO_WritePin(GPIOD, LD3_Pin, GPIO_PIN_SET);			// LED ON
+
+	  Mount_SD("/");
+
+	  char data[10] = {0};
+	  sprintf(data, "%d\n", i);
+	  Update_File("test_data_1.txt", data);						// Add data to the end of file
+	  i++;
+
+	  Unmount_SD("/");
+
+	  HAL_GPIO_WritePin(GPIOD, LD3_Pin, GPIO_PIN_RESET);		// LED OFF
+
+  }
+  /* USER CODE END Start_SD_CARD */
+}
+
 /**
   * @brief  Period elapsed callback in non blocking mode
-  * @note   This function is called  when TIM1 interrupt took place, inside
+  * @note   This function is called  when TIM14 interrupt took place, inside
   * HAL_TIM_IRQHandler(). It makes a direct call to HAL_IncTick() to increment
   * a global variable "uwTick" used as application time base.
   * @param  htim : TIM handle
@@ -1143,30 +1278,45 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
   /* USER CODE BEGIN Callback 0 */
 
+	// Handler for generate us dalay 			( FOR AM2302 )
 	if(htim->Instance == TIM10) 				//check if the interrupt comes from TIM10
 	{
 		if(tim_val > 0)
 		{
 			tim_val = tim_val - 1;
 		}
-		else		// For avoid overflow variable
+		else									// For avoid overflow variable
 		{
 			tim_val = 0;
 		}
-
-
 	}
 
+	// Handler for SD
+	if(htim->Instance == TIM1) 					//check if the interrupt comes from TIM1 (Blink LED)
+	{
+		HAL_GPIO_TogglePin(GPIOD, LD4_Pin);		// Green LED
+	}
+
+	// Handler for count how many time works any tasks
 	if(htim->Instance == TIM3)
 	{
 		ulHighFreqebcyTimerTicks++;					// Update time tasks counter
 	}
+
   /* USER CODE END Callback 0 */
-  if (htim->Instance == TIM1) {
+  if (htim->Instance == TIM14) {
     HAL_IncTick();
   }
   /* USER CODE BEGIN Callback 1 */
 
+	if (htim->Instance == TIM14)		// For SD works (use in fatfs_sd.c file)
+	{
+		if(Timer1 > 0)
+		    Timer1--;
+
+		  if(Timer2 > 0)
+		    Timer2--;
+	}
   /* USER CODE END Callback 1 */
 }
 

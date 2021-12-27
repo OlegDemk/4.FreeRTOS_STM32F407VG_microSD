@@ -10,17 +10,17 @@
 
 
 //extern UART_HandleTypeDef huart2;
-#define UART &huart2
+//#define UART &huart2
 
 
 
 /* =============================>>>>>>>> NO CHANGES AFTER THIS LINE =====================================>>>>>>> */
 
-FATFS fs;  // file system
-FIL fil; // File
+FATFS fs;  			// file system
+FIL fil; 			// File
 FILINFO fno;
-FRESULT fresult;  // result
-UINT br, bw;  // File read/write count
+FRESULT fresult;  	// result
+UINT br, bw;  		// File read/write count
 
 /**** capacity related *****/
 FATFS *pfs;
@@ -39,9 +39,15 @@ void Send_Uart (char *string)
 
 void Mount_SD (const TCHAR* path)
 {
-	fresult = f_mount(&fs, path, 1);
-	if (fresult != FR_OK) Send_Uart ("ERROR!!! in mounting SD CARD...\n\n");
-	else Send_Uart("SD CARD mounted successfully...\n");
+	fresult = f_mount(&fs, path, 0);   // was 1
+	if (fresult != FR_OK)
+	{
+		Send_Uart ("ERROR!!! in mounting SD CARD...\n\n");
+	}
+	else
+	{
+		Send_Uart("SD CARD mounted successfully...\n");
+	}
 }
 
 void Unmount_SD (const TCHAR* path)
@@ -188,7 +194,7 @@ FRESULT Write_File (char *name, char *data)
 
 FRESULT Read_File (char *name)
 {
-	/**** check whether the file exists or not ****/
+	/**** check whether the file exists or not ****/  //  НЕ ЧИТАЄТЬСЯ ФАЙЛ!!!!
 	fresult = f_stat (name, &fno);
 	if (fresult != FR_OK)
 	{
@@ -216,7 +222,8 @@ FRESULT Read_File (char *name)
 		/* Read data from the file
 		* see the function details for the arguments */
 
-		char *buffer = pvPortMalloc(sizeof(f_size(&fil)));
+		char *buffer = pvPortMalloc(sizeof(f_size(&fil)));		//	Відкриває але не читає файл ! і стирає те що  в ньому було !
+		//uint16_t size_buf = f_size(&fil);         				// <<<<<<<<<<<<<<<<<<<<<<
 		fresult = f_read (&fil, buffer, f_size(&fil), &br);
 		if (fresult != FR_OK)
 		{
