@@ -73,6 +73,8 @@ volatile uint8_t Timer1, Timer2;
 /* Private variables ---------------------------------------------------------*/
 I2C_HandleTypeDef hi2c3;
 
+RTC_HandleTypeDef hrtc;
+
 SPI_HandleTypeDef hspi1;
 
 TIM_HandleTypeDef htim1;
@@ -94,7 +96,7 @@ const osThreadAttr_t defaultTask_attributes = {
 };
 /* Definitions for Blue_LED_Blink */
 osThreadId_t Blue_LED_BlinkHandle;
-uint32_t Blue_LED_BlinkBuffer[ 128 ];
+uint32_t Blue_LED_BlinkBuffer[ 1024 ];
 osStaticThreadDef_t Blue_LED_BlinkControlBlock;
 const osThreadAttr_t Blue_LED_Blink_attributes = {
   .name = "Blue_LED_Blink",
@@ -262,6 +264,7 @@ static void MX_TIM2_Init(void);
 static void MX_TIM10_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_TIM1_Init(void);
+static void MX_RTC_Init(void);
 void StartDefaultTask(void *argument);
 void Start_Blue_LED_Blink(void *argument);
 void Start_Show_Resources(void *argument);
@@ -314,6 +317,7 @@ int main(void)
   MX_SPI1_Init();
   MX_FATFS_Init();
   MX_TIM1_Init();
+  MX_RTC_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_Base_Start_IT(&htim3);		//  This TIM3 using for calculate how many time all tasks was running.
 
@@ -321,16 +325,22 @@ int main(void)
   //HAL_TIM_Base_Start_IT(&htim10);			// Using for generate us delays
   HAL_TIM_Base_Start_IT(&htim1);			// Blink Green LED
 
-
-//  HAL_Delay(100);
+//  // Set up RTC /////////////////////////////////////////////////////
+//  // 1. Set time
+//  RTC_TimeTypeDef sTime = {0};
+//  sTime.Hours = 0x23;
+//  sTime.Minutes = 0x59;
+//  sTime.Seconds = 0x45;
+//  HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
+//  // Set date
 //
-//  Mount_SD("/");
-//  //Format_SD();
-//
-//  Read_File("test1.txt");
-//  // Create_File("Test_data.txt");
-//  // Create_File("Test_data_2.txt");
-//  Unmount_SD("/");
+//  RTC_DateTypeDef sDate = {0};
+//  sDate.Date = 28;
+//  sDate.Month = RTC_MONTH_DECEMBER;
+//  sDate.WeekDay = RTC_WEEKDAY_TUESDAY;
+//  sDate.Year = 21;
+//  HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BIN);
+//  /////////////////////////////////////////////////////////////////////
 
   /* USER CODE END 2 */
 
@@ -418,8 +428,9 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE|RCC_OSCILLATORTYPE_LSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
+  RCC_OscInitStruct.LSEState = RCC_LSE_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
   RCC_OscInitStruct.PLL.PLLM = 8;
@@ -476,6 +487,86 @@ static void MX_I2C3_Init(void)
   /* USER CODE BEGIN I2C3_Init 2 */
 
   /* USER CODE END I2C3_Init 2 */
+
+}
+
+/**
+  * @brief RTC Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_RTC_Init(void)
+{
+
+  /* USER CODE BEGIN RTC_Init 0 */
+
+  /* USER CODE END RTC_Init 0 */
+
+  RTC_TimeTypeDef sTime = {0};
+  RTC_DateTypeDef sDate = {0};
+  RTC_AlarmTypeDef sAlarm = {0};
+
+  /* USER CODE BEGIN RTC_Init 1 */
+
+  /* USER CODE END RTC_Init 1 */
+  /** Initialize RTC Only
+  */
+  hrtc.Instance = RTC;
+  hrtc.Init.HourFormat = RTC_HOURFORMAT_24;
+  hrtc.Init.AsynchPrediv = 127;
+  hrtc.Init.SynchPrediv = 255;
+  hrtc.Init.OutPut = RTC_OUTPUT_DISABLE;
+  hrtc.Init.OutPutPolarity = RTC_OUTPUT_POLARITY_HIGH;
+  hrtc.Init.OutPutType = RTC_OUTPUT_TYPE_OPENDRAIN;
+  if (HAL_RTC_Init(&hrtc) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /* USER CODE BEGIN Check_RTC_BKUP */
+
+  /* USER CODE END Check_RTC_BKUP */
+
+  /** Initialize RTC and set the Time and Date
+  */
+  sTime.Hours = 0x23;
+  sTime.Minutes = 0x59;
+  sTime.Seconds = 0x45;
+  sTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
+  sTime.StoreOperation = RTC_STOREOPERATION_RESET;
+//  if (HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BCD) != HAL_OK)
+//  {
+//    Error_Handler();
+//  }
+  sDate.WeekDay = RTC_WEEKDAY_TUESDAY;
+  sDate.Month = RTC_MONTH_DECEMBER;
+  sDate.Date = 0x28;
+  sDate.Year = 0x0;
+
+//  if (HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BCD) != HAL_OK)
+//  {
+//    Error_Handler();
+//  }
+  /** Enable the Alarm A
+  */
+  sAlarm.AlarmTime.Hours = 0x0;
+  sAlarm.AlarmTime.Minutes = 0x0;
+  sAlarm.AlarmTime.Seconds = 0x10;
+  sAlarm.AlarmTime.SubSeconds = 0x0;
+  sAlarm.AlarmTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
+  sAlarm.AlarmTime.StoreOperation = RTC_STOREOPERATION_RESET;
+  sAlarm.AlarmMask = RTC_ALARMMASK_NONE;
+  sAlarm.AlarmSubSecondMask = RTC_ALARMSUBSECONDMASK_ALL;
+  sAlarm.AlarmDateWeekDaySel = RTC_ALARMDATEWEEKDAYSEL_WEEKDAY;
+  sAlarm.AlarmDateWeekDay = RTC_WEEKDAY_MONDAY;
+  sAlarm.Alarm = RTC_ALARM_A;
+  if (HAL_RTC_SetAlarm(&hrtc, &sAlarm, RTC_FORMAT_BCD) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN RTC_Init 2 */
+
+  /* USER CODE END RTC_Init 2 */
 
 }
 
@@ -846,14 +937,86 @@ void Start_Blue_LED_Blink(void *argument)
 {
   /* USER CODE BEGIN Start_Blue_LED_Blink */
   /* Infinite loop */
+
+	// Task every seconds blink blue LED and send data in virtual com port.
+	// Set up RTC
+	/*	README <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+	 * STM32IDE  automatically generated setup code and fill in RTC structure fields seconds, minutes,
+	 * hours and date. So, for avoid rewriting time, you need comment automated generated code.
+	 *
+	 * RTC needs BATTERY for count time when external power will be removed.
+	 * For STM32F407 discovery dev board needs remove R26, and connect battery to VBAT (near R26).
+	 * Also, need solder the LF Crystal and two capacitors.
+	 */
+
+	// 1. Set time
+	  RTC_TimeTypeDef sTime = {0};
+//	  sTime.Hours = 9;
+//	  sTime.Minutes = 33;
+//	  sTime.Seconds = 00;
+//	  HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
+	  // Set date
+
+	  RTC_DateTypeDef sDate = {0};
+//	  sDate.Date = 29;
+//	  sDate.Month = RTC_MONTH_DECEMBER;
+//	  sDate.WeekDay = RTC_WEEKDAY_WEDNESDAY;
+//	  sDate.Year = 21;
+//	  HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BIN);
+	  /////////////////////////////////////////////////////////////////////
+
+	QUEUE_t msg;												// Make a queue
+
+	char buff[50] = {0};
+	char buf[5] = {0};
+	char str_end_of_line[4] = {'\r','\n','\0'};
+
 	static uint8_t i = 1;
 	for(;;)
 	{
+		// Blue LED blink
 		HAL_GPIO_WritePin(GPIOD, LD6_Pin, GPIO_PIN_SET);
 		osDelay(100);
 		HAL_GPIO_WritePin(GPIOD, LD6_Pin, GPIO_PIN_RESET);
 		osDelay(900);
 
+		// RTC part
+		HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN);						// Get time (write in sDime struct)
+		HAL_RTC_GetDate(&hrtc, &sDate, RTC_FORMAT_BIN);						// Get data (write in sDime struct)
+
+		memset(msg.Buf, 0, sizeof(msg.Buf));								// Fill in buff '\0'
+		memset(buff, 0, sizeof(buff));
+
+		strcat(msg.Buf, "RTC DATA AND TIME >>>>>>>    " );
+
+		// Date
+		itoa(sDate.Year, buf, 10);
+		strcat(msg.Buf, buf);
+
+		itoa(sDate.Month, buf, 10);
+		strcat(msg.Buf, "-");
+		strcat(msg.Buf, buf);
+
+		itoa(sDate.Date, buf, 10);
+		strcat(msg.Buf, "-");
+		strcat(msg.Buf, buf);
+
+		strcat(msg.Buf, " | ");
+
+		// Time
+		itoa(sTime.Hours, buf, 10);
+		strcat(msg.Buf, buf);
+
+		itoa(sTime.Minutes, buf, 10);
+		strcat(msg.Buf, ":");
+		strcat(msg.Buf, buf);
+
+		itoa(sTime.Seconds, buf, 10);
+		strcat(msg.Buf, ":");
+		strcat(msg.Buf, buf);
+
+		strcat(msg.Buf, str_end_of_line);
+		osMessageQueuePut(UARTQueueHandle, &msg, 0, osWaitForever);					// Write data on queue (In will print on StartUART_Task task)
 	}
   /* USER CODE END Start_Blue_LED_Blink */
 }
